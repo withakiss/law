@@ -426,25 +426,71 @@
             const params = new URLSearchParams({
                 OC,
                 target: 'law',
-                type,
+                type: 'XML',  // XML 타입으로 요청 (JSON은 이 키에서 작동 안 함)
                 query,
                 display,
                 page,
-                sort,
-                outType: 'JSON'
+                sort
             });
 
             const response = await fetch(`${API_BASE}?${params}`);
             if (!response.ok) throw new Error(`API 오류: ${response.status}`);
 
-            const data = await response.json();
-            const lawSearch = data.LawSearch || {};
-            const laws = lawSearch.law || [];
+            const xmlText = await response.text();
+            
+            // HTML 에러 페이지 체크
+            if (xmlText.trim().startsWith('<!DOCTYPE') || xmlText.trim().startsWith('<html')) {
+                throw new Error('API가 HTML 오류 페이지를 반환했습니다. 인증키나 IP 등록을 확인하세요.');
+            }
+            
+            // XML 파싱
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+            
+            // 파싱 에러 체크
+            const parseError = xmlDoc.querySelector('parsererror');
+            if (parseError) {
+                throw new Error('XML 파싱 실패: ' + parseError.textContent);
+            }
+            
+            // 에러 응답 체크
+            const resultMsg = xmlDoc.querySelector('result');
+            if (resultMsg && resultMsg.textContent.includes('실패')) {
+                const msg = xmlDoc.querySelector('msg');
+                throw new Error(msg ? msg.textContent : resultMsg.textContent);
+            }
+            
+            const lawSearch = xmlDoc.querySelector('LawSearch');
+            if (!lawSearch) {
+                throw new Error('응답 형식이 올바르지 않습니다.');
+            }
+            
+            const totalCnt = lawSearch.querySelector('totalCnt');
+            const totalCount = totalCnt ? parseInt(totalCnt.textContent) : 0;
+            
+            const lawElements = lawSearch.querySelectorAll('law');
+            const laws = [];
+            
+            lawElements.forEach(lawEl => {
+                const getTag = (tag) => {
+                    const el = lawEl.querySelector(tag);
+                    return el ? el.textContent : '';
+                };
+                
+                laws.push({
+                    법령명한글: getTag('법령명한글'),
+                    법령명: getTag('법령명'),
+                    법령ID: getTag('법령ID'),
+                    법령일련번호: getTag('법령일련번호'),
+                    법령종류: getTag('법령구분명'),
+                    공포일자: getTag('공포일자'),
+                    시행일자: getTag('시행일자'),
+                    소관부처: getTag('소관부처'),
+                    법령상세링크: getTag('법령상세링크')
+                });
+            });
 
-            return {
-                totalCount: parseInt(lawSearch.totalCnt) || 0,
-                laws: Array.isArray(laws) ? laws : (laws ? [laws] : [])
-            };
+            return { totalCount, laws };
         }
 
         function renderResults(laws) {
