@@ -264,6 +264,15 @@
                 <input type="text" id="searchInput" placeholder="검색할 법령명, 키워드를 입력하세요 (예: 근로기준법, 개인정보보호법...)" autocomplete="off">
                 <button id="searchBtn">검색</button>
             </div>
+            <div class="api-key-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;" id="apiKeySection">
+                <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: #333;">법제처 오픈 API 인증키 입력 (로컬 저장됨)</label>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <input type="password" id="apiKeyInput" placeholder="인증키 입력" style="flex: 1; min-width: 200px; padding: 10px 14px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem;">
+                    <button id="saveApiKeyBtn" style="padding: 10px 20px; background: #1a3c6e; color: white; border: none; border-radius: 6px; cursor: pointer;">저장</button>
+                    <button id="clearApiKeyBtn" style="padding: 10px 20px; background: #666; color: white; border: none; border-radius: 6px; cursor: pointer;">삭제</button>
+                </div>
+                <p style="margin-top: 10px; font-size: 0.8rem; color: #888;">인증키는 <a href="https://www.law.go.kr/DRF/lawService.do" target="_blank" rel="noopener" style="color: #1a3c6e;">법제처 오픈 API</a>에서 발급받으세요. 브라우저 로컬 스토리지에만 저장되며 서버로 전송되지 않습니다.</p>
+            </div>
 
             <div class="filters">
                 <div class="filter-group">
@@ -318,7 +327,7 @@
     <script>
         // 법제처 오픈 API 설정
         const API_BASE = 'https://www.law.go.kr/DRF/lawSearch.do';
-        const OC = 'yskim75'; // API 인증키 (법제처 발급)
+        let OC = ''; // API 인증키 (로컬 스토리지에서 로드)
 
         let currentPage = 1;
         let currentQuery = '';
@@ -336,8 +345,40 @@
             lawList: document.getElementById('lawList'),
             resultCount: document.getElementById('resultCount'),
             pagination: document.getElementById('pagination'),
-            emptyState: document.getElementById('emptyState')
+            emptyState: document.getElementById('emptyState'),
+            apiKeySection: document.getElementById('apiKeySection'),
+            apiKeyInput: document.getElementById('apiKeyInput'),
+            saveApiKeyBtn: document.getElementById('saveApiKeyBtn'),
+            clearApiKeyBtn: document.getElementById('clearApiKeyBtn')
         };
+
+        // API 키 로드 및 UI 초기화
+        function initApiKey() {
+            const savedKey = localStorage.getItem('law_api_key');
+            if (savedKey) {
+                OC = savedKey;
+                elements.apiKeySection.style.display = 'none';
+            } else {
+                elements.apiKeySection.style.display = 'block';
+            }
+        }
+
+        elements.saveApiKeyBtn.addEventListener('click', () => {
+            const key = elements.apiKeyInput.value.trim();
+            if (!key) return alert('인증키를 입력하세요.');
+            OC = key;
+            localStorage.setItem('law_api_key', key);
+            elements.apiKeyInput.value = '';
+            elements.apiKeySection.style.display = 'none';
+            alert('인증키가 저장되었습니다.');
+        });
+
+        elements.clearApiKeyBtn.addEventListener('click', () => {
+            OC = '';
+            localStorage.removeItem('law_api_key');
+            elements.apiKeySection.style.display = 'block';
+            alert('인증키가 삭제되었습니다.');
+        });
 
         // 엔터키 검색
         elements.searchInput.addEventListener('keypress', (e) => {
@@ -348,9 +389,16 @@
             if (currentQuery) search();
         });
 
+        // 초기화
+        initApiKey();
+
         async function search() {
             const query = elements.searchInput.value.trim();
             if (!query) return alert('검색어를 입력하세요.');
+            if (!OC) {
+                elements.apiKeySection.style.display = 'block';
+                return alert('먼저 API 인증키를 입력해 주세요.');
+            }
 
             currentQuery = query;
             currentPage = 1;
